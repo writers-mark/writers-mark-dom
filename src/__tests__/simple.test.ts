@@ -24,12 +24,14 @@ test.beforeEach((t) => {
 });
 
 test.serial('stylesheet generation', (t) => {
-  const [stylesheet, styleMap] = createStyleElement(testStyle);
+  const ast = compileAst('', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast);
   t.is(stylesheet.sheet?.cssRules.length, 4);
 });
 
 test.serial('stylesheet generation with custom prefix', (t) => {
-  const [stylesheet, styleMap] = createStyleElement(testStyle, {
+  const ast = compileAst('', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast, {
     classPrefix: 'yo_',
   });
   t.is(stylesheet.sheet?.cssRules.length, 4);
@@ -37,36 +39,45 @@ test.serial('stylesheet generation with custom prefix', (t) => {
 });
 
 test.serial('blank rendering', (t) => {
-  const [stylesheet, styleMap] = createStyleElement(testStyle);
-
   const ast = compileAst('', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast);
+
   const paragraphs = render(ast, styleMap);
 
   t.is(paragraphs.length, 0);
 });
 
 test.serial('single paragraph', (t) => {
-  const [stylesheet, styleMap] = createStyleElement(testStyle);
-
   const ast = compileAst('hello!', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast);
+
   const paragraphs = render(ast, styleMap);
 
   t.is(paragraphs.length, 1);
 });
 
-test.serial('multiple paragraphs', (t) => {
-  const [stylesheet, styleMap] = createStyleElement(testStyle);
+test.serial('styled paragraph', (t) => {
+  const ast = compileAst('a\nhello!', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast);
 
+  const paragraphs = render(ast, styleMap);
+
+  t.is(paragraphs[0].className, styleMap['p_a']);
+});
+
+test.serial('multiple paragraphs', (t) => {
   const ast = compileAst('hello!\n\nWorld!', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast);
+
   const paragraphs = render(ast, styleMap);
 
   t.is(paragraphs.length, 2);
 });
 
 test.serial('Simple span', (t) => {
-  const [stylesheet, styleMap] = createStyleElement(testStyle);
-
   const ast = compileAst('hello *World*!', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast);
+
   const paragraphs = render(ast, styleMap);
 
   t.is(paragraphs.length, 1);
@@ -77,9 +88,9 @@ test.serial('Simple span', (t) => {
 });
 
 test.serial('Nested span', (t) => {
-  const [stylesheet, styleMap] = createStyleElement(testStyle);
-
   const ast = compileAst('hello *Wo_r_ld*!', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast);
+
   const paragraphs = render(ast, styleMap);
 
   t.is(paragraphs.length, 1);
@@ -96,9 +107,9 @@ test.serial('Nested span', (t) => {
 });
 
 test.serial('Custom default p rule', (t) => {
-  const [stylesheet, styleMap] = createStyleElement(testStyle);
-
   const ast = compileAst('hello *Wo_r_ld*!', testStyle);
+  const [stylesheet, styleMap] = createStyleElement(ast);
+
   const paragraphs = render(ast, styleMap, { defaultPRule: 'a' });
 
   t.is(paragraphs.length, 1);

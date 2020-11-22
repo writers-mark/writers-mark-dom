@@ -1,12 +1,12 @@
 {
   "name": "writers-mark-dom",
   "homepage": "https://github.com/FrancoisChabot/writers-mark-dom#readme",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Dom Renderer for writers-mark",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "dependencies": {
-    "writers-mark": "^0.3.0"
+    "writers-mark": "^0.4.1"
   },
   "devDependencies": {
     "@types/jsdom": "^16.2.5",

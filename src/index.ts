@@ -31,7 +31,8 @@ const ruleToString = (rule: StyleRule): string => {
  * @param options Sert of options to apply
  *
  */
-export const createStyleElement = (style: Style, options?: Options): [HTMLStyleElement, Record<string, string>] => {
+export const createStyleElement = (ast: AST, options?: Options): [HTMLStyleElement, Record<string, string>] => {
+  const style = ast.style;
   const classPrefix = options?.classPrefix || defaultClassPrefix;
   const stylesheet = document.createElement('style');
   document.head.appendChild(stylesheet);
@@ -86,10 +87,9 @@ export const render = (ast: AST, classMapping: Record<string, string>, options?:
 
     if (p.styles) {
       p.styles.forEach((s) => pElem.classList.add(classMapping['p_' + s]));
-    }
-    else {
+    } else {
       const name = options?.defaultPRule || defaultParagraphRule;
-      pElem.classList.add(classMapping['p_' + name])
+      pElem.classList.add(classMapping['p_' + name]);
     }
 
     for (const section of p.contents) {
