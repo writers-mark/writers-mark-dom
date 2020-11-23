@@ -49,13 +49,13 @@ describe('test suite', () => {
     const ctx = new Context();
 
     const style1 = ctx.compileStyle('para aaa {color: red;}');
-    const style2 = ctx.compileStyle('para aaa {margin-left: 12px;}');
+    const style2 = ctx.compileStyle('para aaa {margin: 12px;}');
     const text = ctx.compileText('aaa\nallo!', [style1, style2]);
 
     const cleanup = render(text, document.body);
     expect(screen.getByText('allo!')).toHaveStyle({
       color: 'red',
-      marginLeft: '12px',
+      margin: '12px',
     });
 
     cleanup();
@@ -76,13 +76,13 @@ describe('test suite', () => {
   test('Apply two classes', () => {
     const ctx = new Context();
 
-    const style = ctx.compileStyle('para aaa {color: red;} para bbb {margin-left: 12px;}');
+    const style = ctx.compileStyle('para aaa {color: red;} para bbb {margin: 12px;}');
     const text = ctx.compileText('aaa\nbbb\nallo!', [style]);
 
     const cleanup = render(text, document.body);
     expect(screen.getByText('allo!')).toHaveStyle({
       color: 'red',
-      marginLeft: '12px',
+      margin: '12px',
     });
 
     cleanup();
