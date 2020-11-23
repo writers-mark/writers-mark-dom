@@ -6,7 +6,7 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "dependencies": {
-    "writers-mark": "^0.5.1"
+    "writers-mark": "^0.5.2"
   },
   "devDependencies": {
     "@testing-library/dom": "^7.28.1",
