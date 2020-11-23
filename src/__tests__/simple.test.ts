@@ -1,126 +1,108 @@
-import { JSDOM } from 'jsdom';
+import { screen } from '@testing-library/dom';
+import '@testing-library/jest-dom';
+import { render } from '..';
+import { Context } from 'writers-mark';
 
-import { render, createStyleElement } from '../index';
-import { compileStyle, compileAst } from 'writers-mark';
-
-import test from 'ava';
-
-/* tslint:disable:no-string-literal */
-
-const testStyle = compileStyle('p a {color: red;} s * {color:blue;} s _ {color:red;}');
-
-declare global {
-  namespace NodeJS {
-    interface Global {
-      document: Document;
-    }
-  }
-}
-
-// Reset the DOM between tests
-test.beforeEach((t) => {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>');
-  global.document = dom.window.document;
-});
-
-test.serial('stylesheet generation', (t) => {
-  const ast = compileAst('', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast);
-  t.is(stylesheet.sheet?.cssRules.length, 4);
-});
-
-test.serial('stylesheet generation with custom prefix', (t) => {
-  const ast = compileAst('', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast, {
-    classPrefix: 'yo_',
+describe('test suite', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+    document.body.className = '';
   });
-  t.is(stylesheet.sheet?.cssRules.length, 4);
-  t.true(styleMap['p_a'].startsWith('yo_'));
-});
 
-test.serial('blank rendering', (t) => {
-  const ast = compileAst('', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast);
+  test('Simple rendering', () => {
+    const ctx = new Context();
 
-  const paragraphs = render(ast, styleMap);
+    const style = ctx.compileStyle('para aaa {color: red;} para aaa {color: blue;}');
+    const text = ctx.compileText('aaa\nallo!', [style]);
 
-  t.is(paragraphs.length, 0);
-});
+    const cleanup = render(text, document.body);
+    expect(screen.getByText('allo!')).toHaveStyle({ color: 'blue' });
 
-test.serial('single paragraph', (t) => {
-  const ast = compileAst('hello!', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast);
+    cleanup();
+  });
 
-  const paragraphs = render(ast, styleMap);
+  test('Cleanup', () => {
+    const ctx = new Context();
 
-  t.is(paragraphs.length, 1);
-});
+    const style = ctx.compileStyle('para aaa {color: red;}');
+    const text = ctx.compileText('aaa\nallo!', [style]);
 
-test.serial('styled paragraph', (t) => {
-  const ast = compileAst('a\nhello!', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast);
+    const cleanup = render(text, document.body);
+    expect(screen.getByText('allo!')).toHaveStyle({ color: 'red' });
+    cleanup();
+    expect(screen.getByText('allo!')).not.toHaveStyle({ color: 'red' });
+  });
 
-  const paragraphs = render(ast, styleMap);
+  test('Custom prefix', () => {
+    const ctx = new Context();
 
-  t.is(paragraphs[0].className, styleMap['p_a']);
-});
+    const style = ctx.compileStyle('para aaa {color: red;}');
+    const text = ctx.compileText('aaa\nallo!', [style]);
 
-test.serial('multiple paragraphs', (t) => {
-  const ast = compileAst('hello!\n\nWorld!', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast);
+    const cleanup = render(text, document.body, 'yohoho');
+    expect(screen.getByText('allo!').className).toContain('yohoho');
 
-  const paragraphs = render(ast, styleMap);
+    cleanup();
+  });
 
-  t.is(paragraphs.length, 2);
-});
+  test('Combine Styles', () => {
+    const ctx = new Context();
 
-test.serial('Simple span', (t) => {
-  const ast = compileAst('hello *World*!', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast);
+    const style1 = ctx.compileStyle('para aaa {color: red;}');
+    const style2 = ctx.compileStyle('para aaa {margin-left: 12px;}');
+    const text = ctx.compileText('aaa\nallo!', [style1, style2]);
 
-  const paragraphs = render(ast, styleMap);
+    const cleanup = render(text, document.body);
+    expect(screen.getByText('allo!')).toHaveStyle({
+      color: 'red',
+      marginLeft: '12px',
+    });
 
-  t.is(paragraphs.length, 1);
-  t.is(paragraphs[0].childNodes.length, 3);
-  t.is(paragraphs[0].childNodes[0].nodeType, document.TEXT_NODE);
-  t.is(paragraphs[0].childNodes[1].nodeType, document.ELEMENT_NODE);
-  t.is(paragraphs[0].childNodes[2].nodeType, document.TEXT_NODE);
-});
+    cleanup();
+  });
 
-test.serial('Nested span', (t) => {
-  const ast = compileAst('hello *Wo_r_ld*!', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast);
+  test('Apply Container style', () => {
+    const ctx = new Context();
 
-  const paragraphs = render(ast, styleMap);
+    const style = ctx.compileStyle('cont {color: red;}');
+    const text = ctx.compileText('allo!', [style]);
 
-  t.is(paragraphs.length, 1);
-  t.is(paragraphs[0].childNodes.length, 3);
-  t.is(paragraphs[0].childNodes[0].nodeType, document.TEXT_NODE);
-  t.is(paragraphs[0].childNodes[1].nodeType, document.ELEMENT_NODE);
-  t.is(paragraphs[0].childNodes[2].nodeType, document.TEXT_NODE);
+    const cleanup = render(text, document.body);
+    expect(document.body).toHaveStyle({ color: 'red' });
 
-  const outer = paragraphs[0].children[0];
-  t.is(outer.childNodes.length, 3);
-  t.is(outer.childNodes[0].nodeType, document.TEXT_NODE);
-  t.is(outer.childNodes[1].nodeType, document.ELEMENT_NODE);
-  t.is(outer.childNodes[2].nodeType, document.TEXT_NODE);
-});
+    cleanup();
+  });
 
-test.serial('Custom default p rule', (t) => {
-  const ast = compileAst('hello *Wo_r_ld*!', testStyle);
-  const [stylesheet, styleMap] = createStyleElement(ast);
+  test('Apply two classes', () => {
+    const ctx = new Context();
 
-  const paragraphs = render(ast, styleMap, { defaultPRule: 'a' });
+    const style = ctx.compileStyle('para aaa {color: red;} para bbb {margin-left: 12px;}');
+    const text = ctx.compileText('aaa\nbbb\nallo!', [style]);
 
-  t.is(paragraphs.length, 1);
-  t.is(paragraphs[0].childNodes.length, 3);
-  t.is(paragraphs[0].childNodes[0].nodeType, document.TEXT_NODE);
-  t.is(paragraphs[0].childNodes[1].nodeType, document.ELEMENT_NODE);
-  t.is(paragraphs[0].childNodes[2].nodeType, document.TEXT_NODE);
+    const cleanup = render(text, document.body);
+    expect(screen.getByText('allo!')).toHaveStyle({
+      color: 'red',
+      marginLeft: '12px',
+    });
 
-  const outer = paragraphs[0].children[0];
-  t.is(outer.childNodes.length, 3);
-  t.is(outer.childNodes[0].nodeType, document.TEXT_NODE);
-  t.is(outer.childNodes[1].nodeType, document.ELEMENT_NODE);
-  t.is(outer.childNodes[2].nodeType, document.TEXT_NODE);
+    cleanup();
+  });
+
+  test('simple span', () => {
+    const ctx = new Context();
+
+    const style = ctx.compileStyle('span # {color: red;}');
+    const text = ctx.compileText('hello #world#', [style]);
+
+    const cleanup = render(text, document.body);
+    expect(screen.getByText('hello')).not.toHaveStyle({
+      color: 'red',
+    });
+
+    expect(screen.getByText('world')).toHaveStyle({
+      color: 'red',
+    });
+
+    cleanup();
+  });
 });

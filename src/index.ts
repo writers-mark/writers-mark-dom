@@ -1,103 +1,123 @@
-import { AST, Block, SpanSection } from 'writers-mark/lib/ast';
-import { Options as MarkedOptions, defaultParagraphRule } from 'writers-mark/lib/options';
-import { Style, StyleRule } from 'writers-mark/lib/style';
-
-const defaultClassPrefix = 'wm_ns__';
+import * as WM from 'writers-mark';
+import { StyleRule } from 'writers-mark/lib/style';
+import { Content, Span } from 'writers-mark/lib/text';
 
 let nextUniqueNumber = 1;
 const makeUniqueIndentifier = (prefix: string): string => {
   return prefix + (nextUniqueNumber++).toString();
 };
 
-export interface Options extends MarkedOptions {
-  classPrefix?: string;
-}
-
-const ruleToString = (rule: StyleRule): string => {
-  let result = '{';
-  for (const k of Object.keys(rule.props)) {
-    result += k + ': ' + rule.props[k] + ';';
-  }
-  result += '}';
-  return result;
-};
-
-/**
- * Creates a HTMLStyleElement from a style. The function will return the style element, as well
- * as a mapping of rule keys to the generated CSS classes. The stylesheet is added as a children
- * of the <head> node of the document.
- *
- * @param style The style to compile
- * @param options Sert of options to apply
- *
- */
-export const createStyleElement = (ast: AST, options?: Options): [HTMLStyleElement, Record<string, string>] => {
-  const style = ast.style;
-  const classPrefix = options?.classPrefix || defaultClassPrefix;
-  const stylesheet = document.createElement('style');
-  document.head.appendChild(stylesheet);
-
+const combineStyles = (
+  styles: WM.Style[],
+  classPrefix: string,
+): [Record<string, Record<string, string>>, Record<string, string>] => {
   const classMapping: Record<string, string> = {};
-  for (const ruleKey of Object.keys(style.paragraph)) {
-    const className = makeUniqueIndentifier(classPrefix);
-    classMapping['p_' + ruleKey] = className;
+  const cssClasses: Record<string, Record<string, string>> = {};
 
-    const rule = style.paragraph[ruleKey];
-    stylesheet.sheet!.insertRule('.' + className + ruleToString(rule), 0);
+  const applyRules = (key: string, rule: StyleRule) => {
+    if (!cssClasses[key]) {
+      cssClasses[key] = {};
+      classMapping[key] = makeUniqueIndentifier(classPrefix);
+    }
+
+    const tgt = cssClasses[key];
+    for (const prop of Object.keys(rule.props)) {
+      tgt[prop] = rule.props[prop];
+    }
+  };
+
+  for (const style of styles) {
+    if (style.cont) {
+      applyRules('c_', style.cont);
+    }
+
+    Object.keys(style.para).forEach((k) => applyRules('p_' + k, style.para[k]));
+    Object.keys(style.span).forEach((k) => applyRules('s_' + k, style.span[k]));
   }
 
-  for (const ruleKey of Object.keys(style.span)) {
-    const className = makeUniqueIndentifier(classPrefix);
-    classMapping['s_' + ruleKey] = className;
-
-    const rule = style.span[ruleKey];
-    stylesheet.sheet!.insertRule('.' + className + ruleToString(rule), 0);
-  }
-
-  return [stylesheet, classMapping];
+  return [cssClasses, classMapping];
 };
 
-const renderSection = (section: string | SpanSection, classMapping: Record<string, string>): Node => {
-  const asSection = section as SpanSection;
-  if (asSection.contents && asSection.style) {
+const renderContent = (content: Content, classMapping: Record<string, string>): Node => {
+  const asSpan = content as Span;
+  if (asSpan.contents && asSpan.styles) {
     const result = document.createElement('span');
-    result.classList.add(classMapping['s_' + asSection.style]);
 
-    for (const subSection of asSection.contents) {
-      result.appendChild(renderSection(subSection, classMapping));
-    }
+    asSpan.styles.forEach((s) => result.classList.add(classMapping['s_' + s]));
+    asSpan.contents.forEach((c) => result.appendChild(renderContent(c, classMapping)));
+
     return result;
   } else {
-    return document.createTextNode(section as string);
+    return document.createTextNode(content as string);
   }
 };
 
-/**
- * Renders an AST as a list of <p></p> elements.
+/** Creates the stylesheet for a block of Writer's Mark, and appends it to the document. Usefull for alternate renderers.
  *
- * @param ast The ast to render
- * @param classMapping The class mapping to apply (as returned by createStyleElement)
- * @param options Set of options to apply.
+ * @param text The text that will be rendered with this style.
+ * @param doc The target document
+ * @param classPrefix A string prefixed to all generated CSS classes.
+ * @returns A callback that will cleanup the DOM's CSS stylesheet, and a mapping of internal classes to generated CSS class names.
  */
-export const render = (ast: AST, classMapping: Record<string, string>, options?: Options): HTMLParagraphElement[] => {
-  const result: HTMLParagraphElement[] = [];
+export const createStylesheet = (
+  text: WM.Text,
+  doc: HTMLDocument,
+  classPrefix: string,
+): [Record<string, string>, () => void] => {
+  const [classes, mapping] = combineStyles(text.styles, classPrefix);
+  const stylesheet = doc.createElement('style');
+  doc.head.appendChild(stylesheet);
 
-  for (const p of ast.paragraphs) {
-    const pElem = document.createElement('p');
-
-    if (p.styles) {
-      p.styles.forEach((s) => pElem.classList.add(classMapping['p_' + s]));
-    } else {
-      const name = options?.defaultPRule || defaultParagraphRule;
-      pElem.classList.add(classMapping['p_' + name]);
-    }
-
-    for (const section of p.contents) {
-      pElem.appendChild(renderSection(section, classMapping));
-    }
-
-    result.push(pElem);
+  for (const ruleKey of Object.keys(classes)) {
+    const ruleProps = classes[ruleKey];
+    let cssText = '.' + mapping[ruleKey] + '{';
+    Object.keys(ruleProps).forEach((k) => {
+      cssText += k + ': ' + ruleProps[k] + ';';
+    });
+    cssText += '}';
+    stylesheet.sheet!.insertRule(cssText, stylesheet.sheet!.cssRules.length);
   }
 
-  return result;
+  return [
+    mapping,
+    () => {
+      doc.head.removeChild(stylesheet);
+    },
+  ];
+};
+
+/** Renders a block of Writer's Mark.
+ *
+ * @param text The text to render
+ * @param target Container node to add the rendered content to.
+ * @param classPrefix A string prefixed to all generated CSS classes.
+ * @returns A callback that will cleanup the DOM's CSS stylesheet.
+ */
+export const render = (text: WM.Text, target: HTMLElement, classPrefix: string = 'wm__'): (() => void) => {
+  const doc = target.ownerDocument;
+  const [mapping, cleanup] = createStylesheet(text, target.ownerDocument, classPrefix);
+
+  // This is to prevent closing around the full mapping in the returned callback.
+  let cMapping: string | undefined;
+
+  if (mapping.c_) {
+    cMapping = mapping.c_;
+    target.classList.add(mapping.c_);
+  }
+
+  for (const para of text.paragraphs) {
+    const pElem = doc.createElement('p');
+
+    para.styles.forEach((s) => pElem.classList.add(mapping['p_' + s]));
+    para.contents.forEach((c) => pElem.appendChild(renderContent(c, mapping)));
+
+    target.appendChild(pElem);
+  }
+
+  return () => {
+    if (cMapping) {
+      target.classList.remove(cMapping);
+    }
+    cleanup();
+  };
 };
