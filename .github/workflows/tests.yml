@@ -21,6 +21,8 @@ jobs:
           node-version: ${{ matrix.node_version }}
       - name: Install Dependencies
         run: npm ci
+      - name: Install Test suite
+        run: npm run fetchTests
       - name: Run Tests
         run: npm test
       - name: Upload coverage report

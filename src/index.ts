@@ -14,16 +14,16 @@ const combineStyles = (
   const classMapping: Record<string, string> = {};
   const cssClasses: Record<string, Record<string, string>> = {};
 
+  cssClasses.p_default = {};
+  classMapping.p_default = makeUniqueIndentifier(classPrefix);
+
   const applyRules = (key: string, rule: StyleRule) => {
     if (!cssClasses[key]) {
       cssClasses[key] = {};
       classMapping[key] = makeUniqueIndentifier(classPrefix);
     }
 
-    const tgt = cssClasses[key];
-    for (const prop of Object.keys(rule.props)) {
-      tgt[prop] = rule.props[prop];
-    }
+    Object.keys(rule.props).forEach((p) => (cssClasses[key][p] = rule.props[p]));
   };
 
   for (const style of styles) {
@@ -69,13 +69,15 @@ export const createStylesheet = (
   doc.head.appendChild(stylesheet);
 
   for (const ruleKey of Object.keys(classes)) {
+    const selector = '.' + mapping[ruleKey];
     const ruleProps = classes[ruleKey];
-    let cssText = '.' + mapping[ruleKey] + '{';
+    const ruleId = stylesheet.sheet!.cssRules.length;
+
+    stylesheet.sheet!.insertRule(selector + '{}', ruleId);
+    const rule = stylesheet.sheet!.cssRules[ruleId] as CSSStyleRule;
     Object.keys(ruleProps).forEach((k) => {
-      cssText += k + ': ' + ruleProps[k] + ';';
+      rule.style.setProperty(k, ruleProps[k]);
     });
-    cssText += '}';
-    stylesheet.sheet!.insertRule(cssText, stylesheet.sheet!.cssRules.length);
   }
 
   return [
@@ -95,7 +97,7 @@ export const createStylesheet = (
  */
 export const render = (text: WM.Text, target: HTMLElement, classPrefix: string = 'wm__'): (() => void) => {
   const doc = target.ownerDocument;
-  const [mapping, cleanup] = createStylesheet(text, target.ownerDocument, classPrefix);
+  const [mapping, cleanup] = createStylesheet(text, doc, classPrefix);
 
   // This is to prevent closing around the full mapping in the returned callback.
   let cMapping: string | undefined;
@@ -105,9 +107,11 @@ export const render = (text: WM.Text, target: HTMLElement, classPrefix: string =
     target.classList.add(mapping.c_);
   }
 
+  const defaultClass = mapping.p_default;
   for (const para of text.paragraphs) {
     const pElem = doc.createElement('p');
 
+    pElem.classList.add(defaultClass);
     para.styles.forEach((s) => pElem.classList.add(mapping['p_' + s]));
     para.contents.forEach((c) => pElem.appendChild(renderContent(c, mapping)));
 
