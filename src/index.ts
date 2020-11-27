@@ -10,7 +10,7 @@ const makeUniqueIndentifier = (prefix: string): string => {
 };
 
 /** Renders a piece of content (recursively) */
-const renderContent = (content: Content[], target: Node, classMapping: Record<string, string>) => {
+const renderContent = (doc: HTMLDocument, content: Content[], target: Node, classMapping: Record<string, string>) => {
   interface Entry {
     tgt: Node;
     data: Content[];
@@ -22,17 +22,17 @@ const renderContent = (content: Content[], target: Node, classMapping: Record<st
 
     for (const v of data) {
       if (isSpan(v)) {
-        const spanNode = document.createElement('span');
+        const spanNode = doc.createElement('span');
         v.styles.forEach((s) => spanNode.classList.add(classMapping['s_' + s]));
         tgt.appendChild(spanNode);
         work.push({ tgt: spanNode, data: v.contents });
       } else if (isLink(v)) {
-        const aNode = document.createElement('a');
+        const aNode = doc.createElement('a');
         aNode.setAttribute('href', v.url);
         tgt.appendChild(aNode);
         work.push({ tgt: aNode, data: v.contents });
       } else {
-        tgt.appendChild(document.createTextNode(v as string));
+        tgt.appendChild(doc.createTextNode(v as string));
       }
     }
   }
@@ -139,7 +139,7 @@ export const dangerousRender = (
     }
 
     para.styles.forEach((s) => pElem.classList.add(mapping['p_' + s]));
-    renderContent(para.contents, pElem, mapping);
+    renderContent(doc, para.contents, pElem, mapping);
 
     target.appendChild(pElem);
   }
