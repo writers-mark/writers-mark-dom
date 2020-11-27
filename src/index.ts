@@ -1,54 +1,40 @@
 import * as WM from 'writers-mark';
 import { StyleRule } from 'writers-mark/lib/style';
-import { Content, Span } from 'writers-mark/lib/text';
+import { Content, Span, isSpan, isLink } from 'writers-mark/lib/text';
+
+const DEFAULT_CLASS_PREFIX = 'wm__';
 
 let nextUniqueNumber = 1;
 const makeUniqueIndentifier = (prefix: string): string => {
   return prefix + (nextUniqueNumber++).toString();
 };
 
-const combineStyles = (
-  styles: WM.Style[],
-  classPrefix: string,
-): [Record<string, Record<string, string>>, Record<string, string>] => {
-  const classMapping: Record<string, string> = {};
-  const cssClasses: Record<string, Record<string, string>> = {};
-
-  cssClasses.p_default = {};
-  classMapping.p_default = makeUniqueIndentifier(classPrefix);
-
-  const applyRules = (key: string, rule: StyleRule) => {
-    if (!cssClasses[key]) {
-      cssClasses[key] = {};
-      classMapping[key] = makeUniqueIndentifier(classPrefix);
-    }
-
-    Object.keys(rule.props).forEach((p) => (cssClasses[key][p] = rule.props[p]));
-  };
-
-  for (const style of styles) {
-    if (style.cont) {
-      applyRules('c_', style.cont);
-    }
-
-    Object.keys(style.para).forEach((k) => applyRules('p_' + k, style.para[k]));
-    Object.keys(style.span).forEach((k) => applyRules('s_' + k, style.span[k]));
+/** Renders a piece of content (recursively) */
+const renderContent = (content: Content[], target: Node, classMapping: Record<string, string>) => {
+  interface Entry {
+    tgt: Node;
+    data: Content[];
   }
+  const work: Entry[] = [{ tgt: target, data: content }];
 
-  return [cssClasses, classMapping];
-};
+  while (work.length > 0) {
+    const { tgt, data } = work.pop()!;
 
-const renderContent = (content: Content, classMapping: Record<string, string>): Node => {
-  const asSpan = content as Span;
-  if (asSpan.contents && asSpan.styles) {
-    const result = document.createElement('span');
-
-    asSpan.styles.forEach((s) => result.classList.add(classMapping['s_' + s]));
-    asSpan.contents.forEach((c) => result.appendChild(renderContent(c, classMapping)));
-
-    return result;
-  } else {
-    return document.createTextNode(content as string);
+    for (const v of data) {
+      if (isSpan(v)) {
+        const spanNode = document.createElement('span');
+        v.styles.forEach((s) => spanNode.classList.add(classMapping['s_' + s]));
+        tgt.appendChild(spanNode);
+        work.push({ tgt: spanNode, data: v.contents });
+      } else if (isLink(v)) {
+        const aNode = document.createElement('a');
+        aNode.setAttribute('href', v.url);
+        tgt.appendChild(aNode);
+        work.push({ tgt: aNode, data: v.contents });
+      } else {
+        tgt.appendChild(document.createTextNode(v as string));
+      }
+    }
   }
 };
 
@@ -63,65 +49,100 @@ export const createStylesheet = (
   text: WM.Text,
   doc: HTMLDocument,
   classPrefix: string,
-): [Record<string, string>, () => void] => {
-  const [classes, mapping] = combineStyles(text.styles, classPrefix);
+): [Record<string, string>, HTMLStyleElement] => {
   const stylesheet = doc.createElement('style');
-  doc.head.appendChild(stylesheet);
+  doc.head.appendChild(stylesheet); // This is necessary for the style element to have a sheet assigned to it.
 
-  for (const ruleKey of Object.keys(classes)) {
-    const selector = '.' + mapping[ruleKey];
-    const ruleProps = classes[ruleKey];
+  // Map of WM rules to css rules.
+  const mapping: Record<string, string> = {};
+
+  const applyRules = (key: string, rule: StyleRule) => {
+    if (!mapping[key]) {
+      mapping[key] = makeUniqueIndentifier(classPrefix);
+    }
+
     const ruleId = stylesheet.sheet!.cssRules.length;
+    stylesheet.sheet!.insertRule('.' + mapping[key] + '{}', ruleId);
+    const cssRule = stylesheet.sheet!.cssRules[ruleId] as CSSStyleRule;
+    Object.keys(rule.props).forEach((k) => cssRule.style.setProperty(k, rule.props[k]));
+  };
 
-    stylesheet.sheet!.insertRule(selector + '{}', ruleId);
-    const rule = stylesheet.sheet!.cssRules[ruleId] as CSSStyleRule;
-    Object.keys(ruleProps).forEach((k) => {
-      rule.style.setProperty(k, ruleProps[k]);
-    });
+  for (const style of text.styles) {
+    if (style.cont) {
+      applyRules('c_', style.cont);
+    }
+
+    Object.keys(style.para).forEach((k) => applyRules('p_' + k, style.para[k]));
+    Object.keys(style.span).forEach((k) => applyRules('s_' + k, style.span[k]));
   }
 
-  return [
-    mapping,
-    () => {
-      doc.head.removeChild(stylesheet);
-    },
-  ];
+  return [mapping, stylesheet];
 };
+
+export interface RenderOptions {
+  /** Prefix applied to css class names */
+  classPrefix?: string;
+}
 
 /** Renders a block of Writer's Mark.
  *
  * @param text The text to render
- * @param target Container node to add the rendered content to.
+ * @param target Container node to add the rendered content to. The target must be in the DOM already.
  * @param classPrefix A string prefixed to all generated CSS classes.
- * @returns A callback that will cleanup the DOM's CSS stylesheet.
  */
-export const render = (text: WM.Text, target: HTMLElement, classPrefix: string = 'wm__'): (() => void) => {
+export const render = (text: WM.Text, target: HTMLElement, options: RenderOptions = {}): HTMLIFrameElement => {
   const doc = target.ownerDocument;
-  const [mapping, cleanup] = createStylesheet(text, doc, classPrefix);
 
-  // This is to prevent closing around the full mapping in the returned callback.
-  let cMapping: string | undefined;
+  // Create a sandboxed iframe to render the content in.
+  const iFrame = doc.createElement('iframe');
+  iFrame.setAttribute('frameBorder', '0');
+  iFrame.setAttribute('sandbox', 'allow-same-origin');
+  target.appendChild(iFrame);
+
+  // Render into it.
+  dangerousRender(text, iFrame!.contentDocument!.body, options);
+
+  return iFrame;
+};
+
+export interface UnsafeRenderResults {
+  /** The <style> element that was added to the target's document. */
+  styleElement: HTMLStyleElement;
+}
+
+/** Renders a block of Writer's Mark directly to the target.
+ *  WARNING: Unless you are rendering to a sandboxed IFrame or dealing with trusted, data, you shouldn't be using this.
+ *
+ *  N.B.: This function will append a <style> element to the target document's head
+ *
+ */
+export const dangerousRender = (
+  text: WM.Text,
+  target: HTMLElement,
+  options: RenderOptions = {},
+): UnsafeRenderResults => {
+  let { classPrefix } = { ...options };
+
+  if (!classPrefix) classPrefix = DEFAULT_CLASS_PREFIX;
+
+  const doc = target.ownerDocument;
+  const [mapping, styleElement] = createStylesheet(text, doc, classPrefix);
 
   if (mapping.c_) {
-    cMapping = mapping.c_;
     target.classList.add(mapping.c_);
   }
 
-  const defaultClass = mapping.p_default;
   for (const para of text.paragraphs) {
     const pElem = doc.createElement('p');
+    if (mapping.p_default) {
+      pElem.classList.add(mapping.p_default);
+    }
 
-    pElem.classList.add(defaultClass);
     para.styles.forEach((s) => pElem.classList.add(mapping['p_' + s]));
-    para.contents.forEach((c) => pElem.appendChild(renderContent(c, mapping)));
+    renderContent(para.contents, pElem, mapping);
 
     target.appendChild(pElem);
   }
 
-  return () => {
-    if (cMapping) {
-      target.classList.remove(cMapping);
-    }
-    cleanup();
-  };
+  return { styleElement };
 };

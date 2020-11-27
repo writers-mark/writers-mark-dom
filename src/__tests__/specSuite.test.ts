@@ -4,7 +4,7 @@ import '@testing-library/jest-dom/extend-expect';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { render } from '..';
+import { dangerousRender } from '..';
 import { Context, Options, Style } from 'writers-mark';
 
 interface ExtendedMatchers extends jest.Matchers<void> {
@@ -27,13 +27,14 @@ const buildExpectedBody = (raw: string): HTMLDivElement => {
   return target;
 };
 
-const findRule = (rule: string, style: CSSStyleSheet): CSSRule | undefined => {
+const findRules = (rule: string, style: CSSStyleSheet): CSSRule[] => {
+  const result: CSSRule[] = [];
   for (const i in style.cssRules) {
     if ((style.cssRules[i] as CSSStyleRule).selectorText === '.' + rule) {
-      return style.cssRules[i];
+      result.push(style.cssRules[i]);
     }
   }
-  return undefined;
+  return result;
 };
 
 const buildExpectedStyle = (raw: string): CSSStyleSheet => {
@@ -47,7 +48,7 @@ expect.extend({
   toMatchClassList(
     received: HTMLElement,
     expected: HTMLElement,
-    recivedSheet: CSSStyleSheet,
+    receivedSheet: CSSStyleSheet,
     expectedSheet: CSSStyleSheet,
   ) {
     if (received.classList.length !== expected.classList.length) {
@@ -62,17 +63,13 @@ expect.extend({
       const resultClass = received.classList[i];
       const targetClass = expected.classList[i];
 
-      const resultRule = findRule(resultClass, recivedSheet);
-      const tgtRule = findRule(targetClass, expectedSheet);
+      const resultRules = findRules(resultClass, receivedSheet);
+      const tgtRules = findRules(targetClass, expectedSheet);
 
-      if (
-        resultRule?.cssText.slice(resultRule!.cssText.indexOf('{')) !==
-        tgtRule?.cssText.slice(tgtRule!.cssText.indexOf('{'))
-      ) {
-        return {
-          message: () => `expected ${resultRule!.cssText} to have the same properties as ${tgtRule!.cssText}`,
-          pass: false,
-        };
+      for (let j = 0; j < resultRules.length; ++j) {
+        const a = resultRules[j].cssText;
+        const b = tgtRules[j].cssText;
+        expect(a.slice(a.indexOf('{'))).toBe(b.slice(b.indexOf('{')));
       }
     }
 
@@ -130,8 +127,9 @@ const runSuite = (filePath: string, ctx: Context, styles: Style[]) => {
     const targetBody = buildExpectedBody(body);
 
     const resultBody = document.createElement('div');
+    document.body.appendChild(resultBody);
 
-    render(ctx.compileText(source, styles), resultBody, '_');
+    const { styleElement } = dangerousRender(ctx.compileText(source, styles), resultBody);
     stripBody(resultBody);
 
     const resultSheet = document.styleSheets[1];

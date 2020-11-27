@@ -6,7 +6,7 @@
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "dependencies": {
-    "writers-mark": "^0.5.3"
+    "writers-mark": "^0.6.1"
   },
   "devDependencies": {
     "@testing-library/dom": "^7.28.1",
@@ -26,7 +26,7 @@
     "typescript": "^4.1.2"
   },
   "scripts": {
-    "fetchTests" : "git clone --depth 1 --single-branch --branch v0.5.1 https://github.com/writers-mark/writers-mark.git",
+    "fetchTests": "git clone --depth 1 --single-branch --branch v0.6.0 https://github.com/writers-mark/writers-mark.git",
     "test": "jest --collectCoverage --runInBand",
     "coverage": "codecov",
     "build": "tsc -p tsconfig.build.json",
