@@ -1,7 +1,7 @@
 {
   "name": "writers-mark-dom",
   "homepage": "https://github.com/FrancoisChabot/writers-mark-dom#readme",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Dom Renderer for Writer's Mark",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
